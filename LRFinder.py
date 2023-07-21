@@ -1,4 +1,5 @@
 import torch
+from matplotlib import pyplot as plt
 from torch.optim.lr_scheduler import _LRScheduler
 
 
@@ -60,7 +61,7 @@ class LRFinder:
         x = x.to(self.device)
         y = y.to(self.device)
 
-        y_pred, _ = self.model(x)
+        y_pred = self.model(x)
 
         loss = self.criterion(y_pred, y)
 
@@ -99,3 +100,20 @@ class IteratorWrapper:
 
     def get_batch(self):
         return next(self)
+
+
+def plot_lr_finder(lrs, losses, skip_start=5, skip_end=5):
+    if skip_end == 0:
+        lrs = lrs[skip_start:]
+        losses = losses[skip_start:]
+    else:
+        lrs = lrs[skip_start:-skip_end]
+        losses = losses[skip_start:-skip_end]
+
+    fig = plt.figure(figsize=(16, 8))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(lrs, losses)
+    ax.set_xscale('log')
+    ax.set_xlabel('Learning rate')
+    ax.set_ylabel('Loss')
+    ax.grid(True, 'both', 'x')

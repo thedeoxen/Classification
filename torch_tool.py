@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 
-def get_device():
+def get_device(log=False):
     device = (
         "cuda"
         if torch.cuda.is_available()
@@ -13,6 +13,8 @@ def get_device():
         if torch.backends.mps.is_available()
         else "cpu"
     )
+    if log:
+        print("PYTORCH DEVICE: ", device)
     return device
 
 
@@ -89,3 +91,21 @@ def to_numpy(tensor):
 
 def get_optimizer_lr(optimizer):
     return optimizer.param_groups[0]['lr']
+
+
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = np.inf
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False

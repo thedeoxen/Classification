@@ -1,53 +1,56 @@
-import copy
-
 import torch
 import torch.nn.functional as F
 import torchinfo
 from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score
 from torch import nn
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torchvision.datasets import ImageFolder
-from torchvision.models import efficientnet_b0
-from torchvision.transforms import transforms
+from torchvision.models import efficientnet_b0, resnet50
 from tqdm import tqdm
 
+from data_tool import get_dataloaders
 from image_helper import plot_images, plot_confusion_matrix, plot_most_incorrect
-from torch_tool import get_device, get_optimizer_lr, set_seed
+from torch_tool import get_device, get_optimizer_lr, set_seed, EarlyStopper
 
 batch_size = 16
 
-lr = 0.0001
-epochs = 3
+lr = 1e-3
+epochs = 100
 image_size = 256
+validation_step = 5
+
+freeze_pretrained = True
 
 
 def main():
-    device = get_device()
+    device = get_device(True)
     set_seed()
+    writer = SummaryWriter()
 
     train_folder = "dataset/train"
     test_folder = "dataset/test"
-    train_dataloader, val_dataloader, test_dataloader, classes = get_dataloaders(train_folder, test_folder)
+    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders(train_folder, test_folder,
+                                                                                             image_size, batch_size)
 
-    model = get_model(device)
+    log_train_labels_distribution_image(classes, train_info, writer)
+    log_images_examples(classes, train_dataloader, writer)
 
+    model = get_resnet_model(device, freeze_pretrained=freeze_pretrained)
     criterion = nn.CrossEntropyLoss()
-
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
-
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer,
-                                                    max_lr=lr * 1e1,
+                                                    max_lr=lr,
                                                     steps_per_epoch=len(train_dataloader),
                                                     epochs=epochs)
 
-    writer = SummaryWriter()
+    stopper = EarlyStopper(3)
 
-    for images, labels in train_dataloader:
-        break
-    plot_images(images, labels, classes)
-    writer.add_figure('train_images', plt.gcf(), 0)
+    # END_LR = 10
+    # NUM_ITER = 300
+    # lr_finder = LRFinder(model, optimizer, criterion, device)
+    # lrs, losses = lr_finder.range_test(train_dataloader, END_LR, NUM_ITER)
+    # plot_lr_finder(lrs, losses, skip_start=0, skip_end=0)
+    # writer.add_figure('lr_finder', plt.gcf(), 0)
 
     for epoch in tqdm(range(epochs)):
         model.train()
@@ -72,7 +75,7 @@ def main():
         train_loss = train_loss / (i + 1)
         train_acc = train_acc / (i + 1)
 
-        if epoch % 5 == 0:
+        if epoch % validation_step == 0:
             print(f"Epoch:{epoch}")
             print(f"Training Loss:{train_loss:.5f}\tTraining Acc:{train_acc * 100:.5f}%")
             print("------------------------------------------------------------------")
@@ -93,6 +96,9 @@ def main():
             val_loss = val_loss / (i + 1)
             val_acc = val_acc / (i + 1)
 
+            if stopper.early_stop(val_loss):
+                print("early_stop")
+
             print(f"Epoch:{epoch}")
             print(f"Val Loss:{val_loss:.5f}\tVal Acc:{val_acc * 100:.5f}%")
             print("------------------------------------------------------------------")
@@ -107,7 +113,8 @@ def main():
         {
             "lr": lr,
             "batch_size": batch_size,
-            "image_size": image_size
+            "image_size": image_size,
+            "freeze_pretrained": freeze_pretrained
         },
         {
             "loss/val": val_loss,
@@ -121,12 +128,32 @@ def main():
     images, labels, probs = get_predictions(model, val_dataloader, device)
     pred_labels = torch.argmax(probs, 1)
 
-    plot_confusion_matrix(labels, pred_labels, classes)
-    writer.add_figure('val_confusion_matrix', plt.gcf(), 0)
+    lof_confusion_matrix(classes, labels, pred_labels, writer)
+    log_incorrect_examples(classes, images, labels, pred_labels, probs, writer)
+    torch.save(model.state_dict(), 'eggs-model.pt')
 
+
+def log_incorrect_examples(classes, images, labels, pred_labels, probs, writer):
     incorrect_examples = get_incorrect_examples(images, labels, probs, pred_labels)
     plot_most_incorrect(incorrect_examples, classes, 10)
     writer.add_figure('val_most_incorrect', plt.gcf(), 0)
+
+
+def lof_confusion_matrix(classes, labels, pred_labels, writer):
+    plot_confusion_matrix(labels, pred_labels, classes)
+    writer.add_figure('val_confusion_matrix', plt.gcf(), 0)
+
+
+def log_images_examples(classes, train_dataloader, writer):
+    for images, labels in train_dataloader:
+        break
+    plot_images(images, labels, classes)
+    writer.add_figure('train_images', plt.gcf(), 0)
+
+
+def log_train_labels_distribution_image(classes, train_info, writer):
+    plt.bar(classes, train_info[1])
+    writer.add_figure('train_labels_distribution', plt.gcf(), 0)
 
 
 def get_incorrect_examples(images, labels, probs, pred_labels):
@@ -165,15 +192,18 @@ def get_predictions(model, iterator, device):
     return images, labels, probs
 
 
-def get_model(device):
+def get_model(device, freeze_pretrained=True, classes=3):
     model = efficientnet_b0(weights="IMAGENET1K_V1")
-
-    for param in model.parameters():
-        param.requires_grad = False
+    if freeze_pretrained:
+        params = list(model.parameters())
+        l = len(params)
+        for index, param in enumerate(params):
+            # if index >= int(l / 2):
+            param.requires_grad = False
 
     model.classifier = nn.Sequential(
         nn.Dropout(p=0.2, inplace=True),
-        nn.Linear(in_features=1280, out_features=3, bias=True),
+        nn.Linear(in_features=1280, out_features=classes, bias=True),
         nn.Softmax(dim=-1)
     )
     model.to(device)
@@ -181,45 +211,20 @@ def get_model(device):
     return model
 
 
-def get_dataloaders(train_folder, test_folder):
-    train_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(size=(image_size, image_size)),
-            # transforms.CenterCrop(image_size),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            # transforms.RandomRotation(degrees=30)
-        ]
-    )
-    eval_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Resize(size=(image_size, image_size))
-        ]
-    )
-    train_dataset = ImageFolder(root=train_folder, transform=train_transform)
-    test_dataset = ImageFolder(root=test_folder, transform=eval_transform)
-    classes = train_dataset.classes
-    ratio = 0.8
-    train_dataset, val_dataset = split_dataset(train_dataset, ratio)
-    # val_dataset.dataset.transform = eval_transform
+def get_resnet_model(device, freeze_pretrained=True, classes=3):
+    model = resnet50(weights="IMAGENET1K_V1")
+    if freeze_pretrained:
+        params = list(model.parameters())
+        l = len(params)
+        r = int(l * 0.25)
+        for index, param in enumerate(params[:-r]):
+            # if index >= int(l / 2):
+            param.requires_grad = False
+    model.fc = nn.Linear(model.fc.in_features, classes)
 
-    val_dataset = copy.deepcopy(val_dataset)
-    val_dataset.dataset.transform = eval_transform
-
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False)
-    test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
-
-    return train_dataloader, val_dataloader, test_dataloader, classes
-
-
-def split_dataset(dataset, ratio):
-    train_size = int(ratio * len(dataset))
-    val_size = len(dataset) - train_size
-    dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-    return dataset, val_dataset
+    model.to(device)
+    torchinfo.summary(model)
+    return model
 
 
 if __name__ == '__main__':

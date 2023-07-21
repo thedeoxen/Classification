@@ -21,6 +21,7 @@ def plot_images(images, labels, classes, normalize=True):
 
 
 def plot_most_incorrect(incorrect, classes, n_images, normalize=True):
+    n_images = min(n_images, len(incorrect))
     rows = int(np.sqrt(n_images))
     cols = int(np.sqrt(n_images))
 
