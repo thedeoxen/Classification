@@ -4,7 +4,7 @@ import torch
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
-def plot_images(images, labels, classes, normalize=True):
+def plot_images(images, labels, classes):
     n_images = len(images)
 
     rows = int(np.sqrt(n_images))
@@ -20,7 +20,7 @@ def plot_images(images, labels, classes, normalize=True):
         ax.axis('off')
 
 
-def plot_most_incorrect(incorrect, classes, n_images, normalize=True):
+def plot_most_incorrect(incorrect, classes, n_images):
     n_images = min(n_images, len(incorrect))
     rows = int(np.sqrt(n_images))
     cols = int(np.sqrt(n_images))

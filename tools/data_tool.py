@@ -7,14 +7,6 @@ from torchvision.datasets import ImageFolder
 from torchvision.transforms import transforms
 
 
-def main():
-    pass
-
-
-if __name__ == '__main__':
-    main()
-
-
 def get_dataloaders(train_folder, test_folder, image_size, batch_size):
     train_transform = transforms.Compose(
         [
@@ -57,6 +49,7 @@ def split_dataset(dataset, ratio):
     val_size = len(dataset) - train_size
     dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
     return dataset, val_dataset
+
 
 def k_fold(k, dataset, num_val_samples):
     for i in range(k):
