@@ -1,22 +1,19 @@
 import torch
-from matplotlib import pyplot as plt
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import torchinfo
 from torchvision.models import resnet50
 from tqdm import tqdm
 
-from LRFinder import plot_lr_finder, LRFinder
 from fruits.FruitImageDataset import FruitImageDataset
 from tools import logging_tools as log
 from tools.data_tool import get_dataloaders_from_dataset
-from tools.logging_tools import log_metrics
 from tools.torch_tool import get_device, set_seed, get_optimizer_lr
 
 batch_size = 16
 lr = 1e-3
-epochs = 10
+epochs = 1
 image_size = 256
 validation_step = 1
 early_stop = 5
@@ -25,8 +22,6 @@ freeze_pretrained = True
 
 train_folder = "dataset/Train"
 test_folder = "dataset/Test"
-
-torch.autograd.set_detect_anomaly(True)
 
 
 class Model(nn.Module):
@@ -88,14 +83,13 @@ def main():
                                                     steps_per_epoch=len(train_dataloader),
                                                     epochs=epochs)
 
-    # find_lr(criterion, device, model, optimizer, train_dataloader, writer)
-
     # Train Model
     best_val_acc = 0
     for epoch in tqdm(range(epochs), desc="Epoch"):
         model.train()
         train_loss = 0
-        train_acc = 0
+        train_acc1 = 0
+        train_acc2 = 0
         iterations = len(train_dataloader)
         for i, train_data in tqdm(enumerate(train_dataloader),
                                   desc=f"Epoch: {epoch} / {epochs} - Iteration",
@@ -112,45 +106,93 @@ def main():
             scheduler.step()
 
             train_loss += loss
-            acc_iter = accuracy_score(y1, torch.argmax(y_pred1.cpu(), dim=1))
-            train_acc += acc_iter
+            acc_iter_fruits = accuracy_score(y1, torch.argmax(y_pred1.cpu(), dim=1))
+            acc_iter2 = accuracy_score(y2, torch.argmax(y_pred2.cpu(), dim=1))
+            train_acc1 += acc_iter_fruits
+            train_acc2 += acc_iter2
 
         train_loss = train_loss / (i + 1)
-        train_acc = train_acc / (i + 1)
+        train_acc1 = train_acc1 / (i + 1)
+        train_acc2 = train_acc2 / (i + 1)
 
         if epoch % validation_step == 0:
             print(f"Epoch:{epoch}")
-            print(f"Training Loss:{train_loss:.5f}\tTraining Acc:{train_acc * 100:.5f}%")
+            print(
+                f"Training Loss:{train_loss:.5f}\tTraining Acc1:{train_acc1 * 100:.5f}% tTraining Acc2:{train_acc2 * 100:.5f}%")
             print("------------------------------------------------------------------")
 
             val_loss = 0
-            val_acc = 0
+
+            val_acc_fruits = 0
+            val_precision_fruits = 0
+            val_recall_fruits = 0
+            val_f1_fruits = 0
+
+            val_acc_fresh = 0
+            val_precision_fresh = 0
+            val_recall_fresh = 0
+            val_f1_fresh = 0
+
             model.eval()
             for i, val_data in enumerate(val_dataloader):
                 x, y1, y2 = val_data
                 y_pred1, y_pred2 = model(x.to(device))
-
                 loss = criterion(y_pred1, y1.to(device)) + criterion(y_pred2, y2.to(device))
                 val_loss += loss
-                prediction_indexes = y_pred1.cpu()
-                acc_iter = accuracy_score(y1, torch.argmax(prediction_indexes, dim=1))
-                val_acc += acc_iter
+                prediction_indexes1 = y_pred1.cpu()
+                prediction_indexes2 = y_pred2.cpu()
 
-            val_loss = val_loss / (i + 1)
-            val_acc = val_acc / (i + 1)
+                index_fruits = torch.argmax(prediction_indexes1, dim=1)
+                index_fresh = torch.argmax(prediction_indexes2, dim=1)
 
-            if best_val_acc < val_acc:
-                best_val_acc = val_acc
+                acc_fruits, f1_fruits, precision_fruits, recall_fruits = get_classification_metrics(index_fruits, y1)
+                acc_fresh, f1_fresh, precision_fresh, recall_fresh = get_classification_metrics(index_fresh, y2)
+
+                val_acc_fruits += acc_fruits
+                val_precision_fruits += precision_fruits
+                val_recall_fruits += recall_fruits
+                val_f1_fruits += f1_fruits
+
+                val_acc_fresh += acc_fresh
+                val_precision_fresh += precision_fresh
+                val_recall_fresh += recall_fresh
+                val_f1_fresh += f1_fresh
+
+            size = (i + 1)
+
+            val_acc_fruits = val_acc_fruits / size
+            val_precision_fruits = val_precision_fruits / size
+            val_recall_fruits = val_recall_fruits / size
+            val_f1_fruits = val_f1_fruits / size
+
+            val_acc_fresh = val_acc_fresh / size
+            val_precision_fresh = val_precision_fresh / size
+            val_recall_fresh = val_recall_fresh / size
+            val_f1_fresh = val_f1_fresh / size
+
+            if best_val_acc < val_acc_fruits:
+                best_val_acc = val_acc_fruits
                 torch.save(model.state_dict(), 'fruits.pt')
 
             print(f"Epoch:{epoch}")
-            print(f"Val Loss:{val_loss:.5f}\tVal Acc:{val_acc * 100:.5f}%")
+            print(f"Val Loss:{val_loss:.5f}\tVal Acc:{val_acc_fruits * 100:.5f}%")
             print("------------------------------------------------------------------")
 
             optimizer_lr = get_optimizer_lr(optimizer)
-            log_metrics(writer, epoch, optimizer_lr, train_acc, train_loss, val_acc, val_loss)
 
-    return val_loss, val_acc, train_loss, train_acc
+            writer.add_scalar("Loss/val", val_loss, epoch)
+            writer.add_scalar("Loss/train", train_loss, epoch)
+
+            writer.add_scalar("acc_fruits/val", val_acc_fruits, epoch)
+            writer.add_scalar("precision_fruits/val", val_precision_fruits, epoch)
+            writer.add_scalar("recall_fruits/val", val_recall_fruits, epoch)
+            writer.add_scalar("f1_fruits/val", val_f1_fruits, epoch)
+            writer.add_scalar("acc_fresh/val", val_acc_fresh, epoch)
+            writer.add_scalar("precision_fresh/val", val_precision_fresh, epoch)
+            writer.add_scalar("recall_fresh/val", val_recall_fresh, epoch)
+            writer.add_scalar("f1_fresh/val", val_f1_fresh, epoch)
+
+            writer.add_scalar("LR", optimizer_lr, epoch)
 
     # Log training results and hyperarams
     hyper_params_dict = {
@@ -161,9 +203,11 @@ def main():
     }
     metrics_dict = {
         "loss/val": val_loss,
-        "acc/val": val_acc,
+        "acc_fruits/val": val_acc_fruits,
+        "acc_fruits/val": val_acc_fruits,
         "loss/train": train_loss,
-        "acc/train": train_acc
+        "acc1/train": train_acc1,
+        "acc2/train": train_acc2
     }
     log.log_hyperparams(hyper_params_dict, metrics_dict, writer)
 
@@ -180,13 +224,12 @@ def main():
     torch.save(model.state_dict(), 'eggs-model.pt')
 
 
-def find_lr(criterion, device, model, optimizer, train_dataloader, writer):
-    END_LR = 10
-    NUM_ITER = 300
-    lr_finder = LRFinder(model, optimizer, criterion, device)
-    lrs, losses = lr_finder.range_test(train_dataloader, END_LR, NUM_ITER)
-    plot_lr_finder(lrs, losses, skip_start=0, skip_end=0)
-    writer.add_figure('lr_finder', plt.gcf(), 0)
+def get_classification_metrics(index_fruits, y1):
+    acc_iter1 = accuracy_score(y1, index_fruits)
+    precision = precision_score(y1, index_fruits)
+    recall = recall_score(y1, index_fruits)
+    f1 = f1_score(y1, index_fruits)
+    return acc_iter1, f1, precision, recall
 
 
 def get_incorrect_examples(images, labels, probs, pred_labels):
