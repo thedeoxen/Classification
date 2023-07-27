@@ -6,7 +6,6 @@ from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 from tqdm import tqdm
 
-from fruits.train import image_size
 
 
 def main():
@@ -18,13 +17,16 @@ if __name__ == '__main__':
 
 
 class FruitImageDataset(Dataset):
-    def __init__(self, folder, train=True):
-        self.filenames, self.fruit, self.fresh = [], [], []
+    def __init__(self, folder, image_size, train=True):
+        self.images, self.fruit, self.fresh = [], [], []
         for file in tqdm(os.listdir(folder)):
             for img in os.listdir(os.path.join(folder, file)):
                 self.fresh.append(0 if file[0] == 'f' else 1)
                 self.fruit.append(file[5:] if file[0] == 'f' else file[6:])
-                self.filenames.append(os.path.join(folder, file, img))
+                path = os.path.join(folder, file, img)
+                image = cv2.imread(path)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                self.images.append(image)
 
         self.fruits_classes = sorted(list(set(self.fruit)))
         self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.fruits_classes)}
@@ -48,11 +50,10 @@ class FruitImageDataset(Dataset):
             )
 
     def __len__(self):
-        return len(self.filenames)
+        return len(self.images)
 
     def __getitem__(self, idx):
-        img = cv2.imread(self.filenames[idx])
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = self.images[idx]
         image = self.transform(Image.fromarray(img))
         fruit = self.class_to_idx[self.fruit[idx]]
         return image, fruit, self.fresh[idx]

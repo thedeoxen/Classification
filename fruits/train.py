@@ -16,10 +16,10 @@ from tools.torch_tool import get_device, set_seed, get_optimizer_lr
 
 batch_size = 16
 lr = 1e-3
-epochs = 100
+epochs = 10
 image_size = 256
 validation_step = 1
-early_stop = 10
+early_stop = 5
 
 freeze_pretrained = True
 
@@ -66,8 +66,8 @@ def main():
 
     writer = SummaryWriter()
 
-    train_dataset = FruitImageDataset(train_folder)
-    test_dataset = FruitImageDataset(test_folder)
+    train_dataset = FruitImageDataset(train_folder, image_size=image_size)
+    test_dataset = FruitImageDataset(test_folder, image_size=image_size, train=False)
 
     train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_dataset(test_dataset,
                                                                                                           train_dataset,
