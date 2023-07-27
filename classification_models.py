@@ -7,9 +7,8 @@ def get_resnet_model(device, freeze_pretrained=True, classes=3):
     model = resnet50(weights="IMAGENET1K_V1")
     if freeze_pretrained:
         __freeze_params(model)
-    model.fc = nn.Linear(model.fc.in_features, classes)
     model.fc = nn.Sequential(
-        nn.Dropout(p=0.2, inplace=True),
+        nn.Dropout(p=0.2),
         nn.Linear(model.fc.in_features, classes),
         nn.Softmax(dim=-1)
     )

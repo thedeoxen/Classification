@@ -18,11 +18,15 @@ class Trainer:
             self.stopper = EarlyStopper(3)
 
     def train(self, train_dataloader, val_dataloader, epochs, validation_step):
-        for epoch in tqdm(range(epochs)):
+        for epoch in tqdm(range(epochs), desc="Epoch"):
             self.model.train()
             train_loss = 0
             train_acc = 0
-            for i, train_data in enumerate(train_dataloader):
+            iterations = len(train_dataloader)
+            for i, train_data in tqdm(enumerate(train_dataloader),
+                                      desc=f"Epoch: {epoch} / {epochs} - Iteration",
+                                      total=iterations,
+                                      miniters=int(iterations / 200)):
                 x, y = train_data
 
                 y_pred = self.model(x.to(self.device))
@@ -63,8 +67,9 @@ class Trainer:
                 val_acc = val_acc / (i + 1)
 
                 if self.stopper and self.stopper.early_stop(val_loss):
-                    break;
                     print("early_stop")
+                    break
+
 
                 print(f"Epoch:{epoch}")
                 print(f"Val Loss:{val_loss:.5f}\tVal Acc:{val_acc * 100:.5f}%")

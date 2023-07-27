@@ -5,13 +5,14 @@ from tools.image_tools import plot_images, plot_confusion_matrix, plot_most_inco
 
 def log_train_labels_distribution_image(classes, train_info, writer):
     plt.bar(classes, train_info[1])
+    plt.xticks(rotation=90)
     writer.add_figure('train_labels_distribution', plt.gcf(), 0)
 
 
 def log_images_examples(classes, train_dataloader, writer):
-    for images, labels in train_dataloader:
+    for sample in train_dataloader:
         break
-    plot_images(images, labels, classes)
+    plot_images(sample[0], sample[1], classes)
     writer.add_figure('train_images', plt.gcf(), 0)
 
 

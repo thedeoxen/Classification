@@ -7,7 +7,7 @@ from LRFinder import plot_lr_finder, LRFinder
 from Trainer import Trainer
 from classification_models import get_resnet_model
 from tools import logging_tools as log
-from tools.data_tool import get_dataloaders
+from tools.data_tool import get_dataloaders_from_folders
 from tools.torch_tool import get_device, set_seed
 
 batch_size = 16
@@ -31,14 +31,14 @@ def main():
     writer = SummaryWriter()
 
     # Prepare datasets
-    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders(train_folder, test_folder,
-                                                                                             image_size, batch_size)
+    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_folders(train_folder, test_folder,
+                                                                                                          image_size, batch_size)
 
     log.log_train_labels_distribution_image(classes, train_info, writer)
     log.log_images_examples(classes, train_dataloader, writer)
 
     # Define model
-    model = get_resnet_model(device, freeze_pretrained=freeze_pretrained)
+    model = get_resnet_model(device, freeze_pretrained=freeze_pretrained, classes=len(classes))
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer,
