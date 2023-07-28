@@ -24,9 +24,8 @@ class FruitImageDataset(Dataset):
                 self.fresh.append(0 if file[0] == 'f' else 1)
                 self.fruit.append(file[5:] if file[0] == 'f' else file[6:])
                 path = os.path.join(folder, file, img)
-                image = cv2.imread(path)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                self.images.append(image)
+
+                self.images.append(path)
 
         self.fruits_classes = sorted(list(set(self.fruit)))
         self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.fruits_classes)}
@@ -53,7 +52,9 @@ class FruitImageDataset(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        img = self.images[idx]
-        image = self.transform(Image.fromarray(img))
+        path = self.images[idx]
+        image = cv2.imread(path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = self.transform(Image.fromarray(image))
         fruit = self.class_to_idx[self.fruit[idx]]
         return image, fruit, self.fresh[idx]

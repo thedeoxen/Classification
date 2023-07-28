@@ -13,15 +13,18 @@ from tools.torch_tool import get_device, set_seed, get_optimizer_lr
 
 batch_size = 16
 lr = 1e-3
-epochs = 1
+epochs = 10
 image_size = 256
-validation_step = 1
+validate_each_step = 1
 early_stop = 5
+fix_unbalanced = True
 
 freeze_pretrained = True
 
 train_folder = "dataset/Train"
 test_folder = "dataset/Test"
+
+device = get_device(True)
 
 
 class Model(nn.Module):
@@ -56,7 +59,7 @@ class Model(nn.Module):
 
 def main():
     # Init
-    device = get_device(True)
+
     set_seed()
 
     writer = SummaryWriter()
@@ -68,7 +71,7 @@ def main():
                                                                                                           train_dataset,
                                                                                                           ratio=0.8,
                                                                                                           batch_size=batch_size,
-                                                                                                          fix_imbalanced=True)
+                                                                                                          fix_imbalanced=fix_unbalanced)
 
     log.log_train_labels_distribution_image(classes, train_info, writer)
     log.log_images_examples(classes, train_dataloader, writer)
@@ -86,89 +89,20 @@ def main():
     # Train Model
     best_val_acc = 0
     for epoch in tqdm(range(epochs), desc="Epoch"):
-        model.train()
-        train_loss = 0
-        train_acc1 = 0
-        train_acc2 = 0
-        iterations = len(train_dataloader)
-        for i, train_data in tqdm(enumerate(train_dataloader),
-                                  desc=f"Epoch: {epoch} / {epochs} - Iteration",
-                                  total=iterations,
-                                  miniters=int(iterations / 200)):
-            x, y1, y2 = train_data
+        train_acc_fresh, train_acc_fruits, train_loss = train_step(model, train_dataloader, criterion, optimizer,
+                                                                   scheduler, epoch)
 
-            y_pred1, y_pred2 = model(x.to(device))
-
-            loss = criterion(y_pred1, y1.to(device)) + criterion(y_pred2, y2.to(device))
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-
-            train_loss += loss
-            acc_iter_fruits = accuracy_score(y1, torch.argmax(y_pred1.cpu(), dim=1))
-            acc_iter2 = accuracy_score(y2, torch.argmax(y_pred2.cpu(), dim=1))
-            train_acc1 += acc_iter_fruits
-            train_acc2 += acc_iter2
-
-        train_loss = train_loss / (i + 1)
-        train_acc1 = train_acc1 / (i + 1)
-        train_acc2 = train_acc2 / (i + 1)
-
-        if epoch % validation_step == 0:
+        if epoch % validate_each_step == 0:
             print(f"Epoch:{epoch}")
             print(
-                f"Training Loss:{train_loss:.5f}\tTraining Acc1:{train_acc1 * 100:.5f}% tTraining Acc2:{train_acc2 * 100:.5f}%")
+                f"Training Loss:{train_loss:.5f}\tTraining Acc1:{train_acc_fruits * 100:.5f}% tTraining Acc2:{train_acc_fresh * 100:.5f}%")
             print("------------------------------------------------------------------")
 
-            val_loss = 0
-
-            val_acc_fruits = 0
-            val_precision_fruits = 0
-            val_recall_fruits = 0
-            val_f1_fruits = 0
-
-            val_acc_fresh = 0
-            val_precision_fresh = 0
-            val_recall_fresh = 0
-            val_f1_fresh = 0
-
-            model.eval()
-            for i, val_data in enumerate(val_dataloader):
-                x, y1, y2 = val_data
-                y_pred1, y_pred2 = model(x.to(device))
-                loss = criterion(y_pred1, y1.to(device)) + criterion(y_pred2, y2.to(device))
-                val_loss += loss
-                prediction_indexes1 = y_pred1.cpu()
-                prediction_indexes2 = y_pred2.cpu()
-
-                index_fruits = torch.argmax(prediction_indexes1, dim=1)
-                index_fresh = torch.argmax(prediction_indexes2, dim=1)
-
-                acc_fruits, f1_fruits, precision_fruits, recall_fruits = get_classification_metrics(index_fruits, y1)
-                acc_fresh, f1_fresh, precision_fresh, recall_fresh = get_classification_metrics(index_fresh, y2)
-
-                val_acc_fruits += acc_fruits
-                val_precision_fruits += precision_fruits
-                val_recall_fruits += recall_fruits
-                val_f1_fruits += f1_fruits
-
-                val_acc_fresh += acc_fresh
-                val_precision_fresh += precision_fresh
-                val_recall_fresh += recall_fresh
-                val_f1_fresh += f1_fresh
-
-            size = (i + 1)
-
-            val_acc_fruits = val_acc_fruits / size
-            val_precision_fruits = val_precision_fruits / size
-            val_recall_fruits = val_recall_fruits / size
-            val_f1_fruits = val_f1_fruits / size
-
-            val_acc_fresh = val_acc_fresh / size
-            val_precision_fresh = val_precision_fresh / size
-            val_recall_fresh = val_recall_fresh / size
-            val_f1_fresh = val_f1_fresh / size
+            val_loss, \
+                val_acc_fresh, val_acc_fruits, \
+                val_f1_fresh, val_f1_fruits, \
+                val_precision_fresh, val_precision_fruits, \
+                val_recall_fresh, val_recall_fruits = validation_step(val_dataloader, model, criterion)
 
             if best_val_acc < val_acc_fruits:
                 best_val_acc = val_acc_fruits
@@ -180,36 +114,29 @@ def main():
 
             optimizer_lr = get_optimizer_lr(optimizer)
 
-            writer.add_scalar("Loss/val", val_loss, epoch)
-            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("lr", optimizer_lr, epoch)
 
-            writer.add_scalar("acc_fruits/val", val_acc_fruits, epoch)
-            writer.add_scalar("precision_fruits/val", val_precision_fruits, epoch)
-            writer.add_scalar("recall_fruits/val", val_recall_fruits, epoch)
-            writer.add_scalar("f1_fruits/val", val_f1_fruits, epoch)
-            writer.add_scalar("acc_fresh/val", val_acc_fresh, epoch)
-            writer.add_scalar("precision_fresh/val", val_precision_fresh, epoch)
-            writer.add_scalar("recall_fresh/val", val_recall_fresh, epoch)
-            writer.add_scalar("f1_fresh/val", val_f1_fresh, epoch)
+            writer.add_scalar("loss/train", train_loss, epoch)
+            writer.add_scalars("acc/train", {"fruits": train_acc_fruits, "fresh": train_acc_fresh}, epoch)
 
-            writer.add_scalar("LR", optimizer_lr, epoch)
+            writer.add_scalar("loss/val", val_loss, epoch)
+            writer.add_scalars("acc/val", {"fruits": val_acc_fruits, "fresh": val_acc_fresh}, epoch)
+            writer.add_scalars("precision/val", {"fruits": val_precision_fruits, "fresh": val_precision_fresh}, epoch)
+            writer.add_scalars("recall/val", {"fruits": val_recall_fruits, "fresh": val_recall_fresh}, epoch)
+            writer.add_scalars("f1/val", {"fruits": val_f1_fruits, "fresh": val_f1_fresh}, epoch)
 
     # Log training results and hyperarams
     hyper_params_dict = {
         "lr": lr,
         "batch_size": batch_size,
         "image_size": image_size,
-        "freeze_pretrained": freeze_pretrained
+        "freeze_pretrained": freeze_pretrained,
+        "fix_unbalanced": fix_unbalanced
     }
     metrics_dict = {
-        "loss/val": val_loss,
-        "acc_fruits/val": val_acc_fruits,
-        "acc_fruits/val": val_acc_fruits,
-        "loss/train": train_loss,
-        "acc1/train": train_acc1,
-        "acc2/train": train_acc2
+        "~loss/val": val_loss
     }
-    log.log_hyperparams(hyper_params_dict, metrics_dict, writer)
+    log.log_hyperparams(hyper_params_dict, metrics_dict=metrics_dict, writer=writer)
 
     # Evaluate and log results
     images, labels, probs = get_predictions(model, val_dataloader, device)
@@ -221,14 +148,103 @@ def main():
     log.log_incorrect_examples(classes, incorrect_examples, writer)
 
     # Save model
-    torch.save(model.state_dict(), 'eggs-model.pt')
+    torch.save(model.state_dict(), 'fruits.pt')
 
 
-def get_classification_metrics(index_fruits, y1):
-    acc_iter1 = accuracy_score(y1, index_fruits)
-    precision = precision_score(y1, index_fruits)
-    recall = recall_score(y1, index_fruits)
-    f1 = f1_score(y1, index_fruits)
+def train_step(model, dataloader, criterion, optimizer, scheduler, epoch):
+    model.train()
+    train_loss = 0
+    train_acc_fruits = 0
+    train_acc_fresh = 0
+    iterations = len(dataloader)
+    for i, train_data in tqdm(enumerate(dataloader),
+                              desc=f"Epoch: {epoch} / {epochs} - Iteration",
+                              total=iterations,
+                              miniters=int(iterations / 200)):
+        x, y1, y2 = train_data
+
+        y_pred1, y_pred2 = model(x.to(device))
+
+        loss = criterion(y_pred1, y1.to(device)) + criterion(y_pred2, y2.to(device))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+
+        train_loss += loss
+        acc_iter_fruits = accuracy_score(y1, torch.argmax(y_pred1.cpu(), dim=1))
+        acc_iter2 = accuracy_score(y2, torch.argmax(y_pred2.cpu(), dim=1))
+        train_acc_fruits += acc_iter_fruits
+        train_acc_fresh += acc_iter2
+    train_loss = train_loss / (i + 1)
+    train_acc_fruits = train_acc_fruits / (i + 1)
+    train_acc_fresh = train_acc_fresh / (i + 1)
+    return train_acc_fresh, train_acc_fruits, train_loss
+
+
+def validation_step(dataloader, model, criterion):
+    val_loss = 0
+    val_acc_fruits = 0
+    val_precision_fruits = 0
+    val_recall_fruits = 0
+    val_f1_fruits = 0
+    val_acc_fresh = 0
+    val_precision_fresh = 0
+    val_recall_fresh = 0
+    val_f1_fresh = 0
+
+    model.eval()
+    iterations = len(dataloader)
+    for i, val_data in tqdm(enumerate(dataloader),
+                              desc=f"Validation Iteration",
+                              total=iterations,
+                              miniters=int(iterations / 200)):
+        x, y1, y2 = val_data
+        y_pred1, y_pred2 = model(x.to(get_device()))
+        loss = criterion(y_pred1, y1.to(get_device())) + criterion(y_pred2, y2.to(get_device()))
+        val_loss += loss
+        prediction_indexes1 = y_pred1.cpu()
+        prediction_indexes2 = y_pred2.cpu()
+
+        index_fruits = torch.argmax(prediction_indexes1, dim=1)
+        index_fresh = torch.argmax(prediction_indexes2, dim=1)
+
+        acc_fruits, f1_fruits, precision_fruits, recall_fruits = get_classification_metrics(y1, index_fruits)
+
+        val_acc_fruits += acc_fruits
+        val_precision_fruits += precision_fruits
+        val_recall_fruits += recall_fruits
+        val_f1_fruits += f1_fruits
+
+        acc_fresh, f1_fresh, precision_fresh, recall_fresh = get_classification_metrics(y2, index_fresh)
+        val_acc_fresh += acc_fresh
+        val_precision_fresh += precision_fresh
+        val_recall_fresh += recall_fresh
+        val_f1_fresh += f1_fresh
+
+    size = (i + 1)
+    val_loss /= size
+    val_acc_fruits /= size
+    val_precision_fruits /= size
+    val_recall_fruits /= size
+    val_f1_fruits /= size
+    val_acc_fresh /= size
+    val_precision_fresh /= size
+    val_recall_fresh /= size
+    val_f1_fresh /= size
+
+    return val_loss, \
+        val_acc_fresh, val_acc_fruits, \
+        val_f1_fresh, val_f1_fruits, \
+        val_precision_fresh, val_precision_fruits, \
+        val_recall_fresh, val_recall_fruits
+
+
+def get_classification_metrics(y_true, y_pred):
+    acc_iter1 = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, average="macro")
+    recall = recall_score(y_true, y_pred, average="macro")
+    f1 = f1_score(y_true, y_pred, average="macro")
     return acc_iter1, f1, precision, recall
 
 
@@ -250,14 +266,14 @@ def get_predictions(model, iterator, device):
     probs = []
 
     with torch.no_grad():
-        for (x, y) in iterator:
+        for (x, y1, y2) in iterator:
             x = x.to(device)
 
-            y_pred = model(x)
+            y_pred1, y_pred2 = model(x)
 
             images.append(x.cpu())
-            labels.append(y.cpu())
-            probs.append(y_pred.cpu())
+            labels.append(y1.cpu())
+            probs.append(y_pred1.cpu())
 
     images = torch.cat(images, dim=0)
     labels = torch.cat(labels, dim=0)
