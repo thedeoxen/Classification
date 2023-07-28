@@ -2,10 +2,11 @@ import torch
 from matplotlib import pyplot as plt
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.transforms import transforms
 
 from LRFinder import plot_lr_finder, LRFinder
 from Trainer import Trainer
-from classification_models import get_resnet_model
+from classification_models import get_resnet_model, get_mobilenet_model, get_mobilenetv3_model
 from tools import logging_tools as log
 from tools.data_tool import get_dataloaders_from_folders
 from tools.torch_tool import get_device, set_seed
@@ -15,11 +16,12 @@ lr = 1e-3
 epochs = 100
 image_size = 256
 validation_step = 5
-early_stop = 5
+early_stop = -1
 
 freeze_pretrained = True
 
 train_folder = "dataset/train"
+val_folder = "dataset/val"
 test_folder = "dataset/test"
 
 
@@ -30,17 +32,31 @@ def main():
 
     writer = SummaryWriter()
 
+    train_transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Resize(size=(image_size, image_size)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(degrees=10)
+        ]
+    )
+
     # Prepare datasets
-    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_folders(train_folder,
-                                                                                                          test_folder,
-                                                                                                          image_size=image_size,
-                                                                                                          batch_size=batch_size)
+    train_dataloader, \
+        val_dataloader, \
+        test_dataloader, \
+        classes, \
+        train_info = get_dataloaders_from_folders(train_folder,
+                                                  val_folder=val_folder,
+                                                  image_size=image_size,
+                                                  batch_size=batch_size,
+                                                  train_transform=train_transform)
 
     log.log_train_labels_distribution_image(classes, train_info, writer)
     log.log_images_examples(classes, train_dataloader, writer)
 
     # Define model
-    model, model_name = get_resnet_model(device, freeze_pretrained=freeze_pretrained, classes=len(classes))
+    model, model_name = get_mobilenetv3_model(device, freeze_pretrained=freeze_pretrained, classes=len(classes))
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(params=model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer,
@@ -60,7 +76,7 @@ def main():
         "batch_size": batch_size,
         "image_size": image_size,
         "freeze_pretrained": freeze_pretrained,
-        "model_name":model_name
+        "model":model_name
     }
     metrics_dict = {
         "~loss/val": val_loss
@@ -77,7 +93,7 @@ def main():
     log.log_incorrect_examples(classes, incorrect_examples, writer)
 
     # Save model
-    torch.save(model.state_dict(), 'eggs-model.pt')
+    torch.save(model.state_dict(), 'model.pt')
 
 
 def find_lr(criterion, device, model, optimizer, train_dataloader, writer):

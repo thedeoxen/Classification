@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from fruits.FruitImageDataset import FruitImageDataset
 from tools import logging_tools as log
-from tools.data_tool import get_dataloaders_from_dataset
+from tools.data_tool import get_dataloaders_from_dataset, split_train
 from tools.torch_tool import get_device, set_seed, get_optimizer_lr
 
 batch_size = 16
@@ -17,7 +17,7 @@ epochs = 10
 image_size = 256
 validate_each_step = 1
 early_stop = 5
-fix_unbalanced = True
+fix_unbalanced = False
 
 freeze_pretrained = True
 
@@ -33,6 +33,7 @@ class Model(nn.Module):
         super().__init__()
 
         self.model = resnet50(weights="IMAGENET1K_V1")
+        self.modelname = "resnet50"
         params = list(self.model.parameters())
         for index, param in enumerate(params):
             param.requires_grad = False
@@ -67,9 +68,9 @@ def main():
     train_dataset = FruitImageDataset(train_folder, image_size=image_size)
     test_dataset = FruitImageDataset(test_folder, image_size=image_size, train=False)
 
-    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_dataset(test_dataset,
-                                                                                                          train_dataset,
-                                                                                                          ratio=0.8,
+    train_dataset, val_dataset = split_train(train_dataset, transform=test_dataset.transform)
+    train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_dataset(train_dataset,
+                                                                                                          test_dataset,
                                                                                                           batch_size=batch_size,
                                                                                                           fix_imbalanced=fix_unbalanced)
 
@@ -131,7 +132,8 @@ def main():
         "batch_size": batch_size,
         "image_size": image_size,
         "freeze_pretrained": freeze_pretrained,
-        "fix_unbalanced": fix_unbalanced
+        "fix_unbalanced": fix_unbalanced,
+        "model_name": model.modelname
     }
     metrics_dict = {
         "~loss/val": val_loss
@@ -196,9 +198,9 @@ def validation_step(dataloader, model, criterion):
     model.eval()
     iterations = len(dataloader)
     for i, val_data in tqdm(enumerate(dataloader),
-                              desc=f"Validation Iteration",
-                              total=iterations,
-                              miniters=int(iterations / 200)):
+                            desc=f"Validation Iteration",
+                            total=iterations,
+                            miniters=int(iterations / 200)):
         x, y1, y2 = val_data
         y_pred1, y_pred2 = model(x.to(get_device()))
         loss = criterion(y_pred1, y1.to(get_device())) + criterion(y_pred2, y2.to(get_device()))

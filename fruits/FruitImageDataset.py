@@ -7,7 +7,6 @@ from torchvision.transforms import transforms
 from tqdm import tqdm
 
 
-
 def main():
     pass
 
@@ -20,15 +19,16 @@ class FruitImageDataset(Dataset):
     def __init__(self, folder, image_size, train=True):
         self.images, self.fruit, self.fresh = [], [], []
         for file in tqdm(os.listdir(folder)):
-            for img in os.listdir(os.path.join(folder, file)):
+            for img in os.listdir(os.path.join(folder, file))[:100]:
                 self.fresh.append(0 if file[0] == 'f' else 1)
                 self.fruit.append(file[5:] if file[0] == 'f' else file[6:])
                 path = os.path.join(folder, file, img)
 
                 self.images.append(path)
 
-        self.fruits_classes = sorted(list(set(self.fruit)))
-        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.fruits_classes)}
+        self.classes = sorted(list(set(self.fruit)))
+        self.targets = self.fruit
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
 
         if train:
             self.transform = transforms.Compose(

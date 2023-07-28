@@ -14,6 +14,7 @@ class Trainer:
         self.scheduler = scheduler
         self.device = get_device()
         self.writer = writer
+        self.stopper = None
         if early_stop > 0:
             self.stopper = EarlyStopper(3)
 
