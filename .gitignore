@@ -4,3 +4,6 @@
 /eggs/runs/
 /fruits/dataset/
 /fruits/runs/
+/rooms/dataset/
+/rooms/runs/
+*.pt
