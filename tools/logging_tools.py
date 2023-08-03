@@ -1,10 +1,10 @@
 from matplotlib import pyplot as plt
 
-from tools.image_tools import plot_images, plot_confusion_matrix, plot_most_incorrect
+from tools.image_tools import plot_images, plot_confusion_matrix, plot_most_incorrect, plot_multilabel_confusion_matrix
 
 
-def log_train_labels_distribution_image(classes, train_info, writer):
-    plt.bar(classes, train_info[1])
+def log_train_labels_distribution_image(classes, class_count, writer):
+    plt.bar(classes, class_count)
     plt.xticks(rotation=90)
     writer.add_figure('train_labels_distribution', plt.gcf(), 0)
 
@@ -16,8 +16,11 @@ def log_images_examples(classes, train_dataloader, writer):
     writer.add_figure('train_images', plt.gcf(), 0)
 
 
-def lof_confusion_matrix(classes, labels, pred_labels, writer):
-    plot_confusion_matrix(labels, pred_labels, classes)
+def log_confusion_matrix(classes, labels, pred_labels, writer, multilabel=False):
+    if multilabel:
+        plot_multilabel_confusion_matrix(labels, pred_labels, classes)
+    else:
+        plot_confusion_matrix(labels, pred_labels, classes)
     writer.add_figure('val_confusion_matrix', plt.gcf(), 0)
 
 

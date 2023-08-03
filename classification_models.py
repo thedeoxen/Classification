@@ -1,6 +1,6 @@
 import torchinfo
 from torch import nn
-from torchvision.models import resnet50, efficientnet_b0, mobilenet_v2, mobilenet_v3_small
+from torchvision.models import resnet50, efficientnet_b0, mobilenet_v2, mobilenet_v3_small, vit_b_16, efficientnet_v2_m
 
 
 def get_resnet_model(device, freeze_pretrained=True, classes=3):
@@ -43,7 +43,6 @@ def get_mobilenetv3_model(device, freeze_pretrained=True, classes=3):
     torchinfo.summary(model)
     return model, "mobilenet_v3_small"
 
-
 def get_efficientnet_model(device, freeze_pretrained=True, classes=3):
     model = efficientnet_b0(weights="IMAGENET1K_V1")
     if freeze_pretrained:
@@ -58,6 +57,31 @@ def get_efficientnet_model(device, freeze_pretrained=True, classes=3):
     torchinfo.summary(model)
     return model, "efficientnet_b0"
 
+
+def get_vit_model(device, freeze_pretrained=True, classes=3):
+    model = vit_b_16(weights="IMAGENET1K_V1")
+    if freeze_pretrained:
+        __freeze_params(model)
+
+    model.heads = nn.Sequential(nn.Linear(in_features=model.heads.head.in_features, out_features=classes))
+
+    model.to(device)
+    torchinfo.summary(model)
+    return model, "vit_b_16"
+
+def get_efficientnet_model(device, freeze_pretrained=True, classes=3):
+    model = efficientnet_v2_m(weights="IMAGENET1K_V1")
+    if freeze_pretrained:
+        __freeze_params(model)
+
+    model.classifier = nn.Sequential(
+        nn.Dropout(p=0.2),
+        nn.Linear(model.classifier[1].in_features, classes),
+    )
+
+    model.to(device)
+    torchinfo.summary(model)
+    return model, "efficientnet_v2_m"
 
 def __freeze_params(model):
     params = list(model.parameters())

@@ -7,3 +7,5 @@
 /rooms/dataset/
 /rooms/runs/
 *.pt
+/plants/dataset/
+/plants/runs/

@@ -87,7 +87,7 @@ def main():
     images, labels, probs = get_predictions(model, val_dataloader, device)
     pred_labels = torch.argmax(probs, 1)
 
-    log.lof_confusion_matrix(classes, labels, pred_labels, writer)
+    log.log_confusion_matrix(classes, labels, pred_labels, writer)
 
     incorrect_examples = get_incorrect_examples(images, labels, probs, pred_labels)
     log.log_incorrect_examples(classes, incorrect_examples, writer)

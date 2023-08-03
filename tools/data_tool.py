@@ -34,7 +34,7 @@ def get_dataloaders_from_folders(train_folder, test_folder=None, val_folder=None
         val_dataset = ImageFolder(root=val_folder, transform=eval_transform)
 
     if val_dataset is None:
-        train_dataset, val_dataset = split_train(train_dataset, ratio, eval_transform)
+        train_dataset, val_dataset = split_train_val(train_dataset, ratio, eval_transform)
 
     test_dataset = None
     if test_folder is not None:
@@ -49,12 +49,12 @@ def get_dataloaders_from_folders(train_folder, test_folder=None, val_folder=None
     return train_dataloader, val_dataloader, test_dataloader, classes, train_info
 
 
-def split_train(train_dataset, ratio=0.8, transform=None):
-    train_dataset, val_dataset = split_dataset(train_dataset, ratio)
+def split_train_val(train_dataset, ratio=0.8, transform=None):
+    train_dataset, val_dataset = __split_dataset(train_dataset, ratio)
     val_dataset = copy.deepcopy(val_dataset)
     if transform is not None:
         val_dataset.transform = transform
-    return train_dataset.dataset, val_dataset.dataset
+    return train_dataset, val_dataset
 
 
 def get_dataloaders_from_dataset(train_dataset, test_dataset, val_dataset=None, batch_size=16,
@@ -66,9 +66,14 @@ def get_dataloaders_from_dataset(train_dataset, test_dataset, val_dataset=None, 
                                   shuffle=train_sampler is None)
     val_dataloader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+    classes, train_info = get_dataset_info(train_dataset)
+    return train_dataloader, val_dataloader, test_dataloader, classes, train_info
+
+
+def get_dataset_info(train_dataset):
     classes = train_dataset.classes
     train_info = np.unique(train_dataset.targets, return_counts=True)
-    return train_dataloader, val_dataloader, test_dataloader, classes, train_info
+    return classes, train_info
 
 
 def get_sampler_for_imbalanced(train_dataset):
@@ -78,7 +83,7 @@ def get_sampler_for_imbalanced(train_dataset):
     return sampler
 
 
-def split_dataset(dataset, ratio):
+def __split_dataset(dataset, ratio):
     train_size = int(ratio * len(dataset))
     val_size = len(dataset) - train_size
     dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
@@ -95,3 +100,4 @@ def k_fold(k, dataset, num_val_samples):
         valid_dataset = Subset(dataset, valid_idx)
 
         yield train_dataset, valid_dataset
+

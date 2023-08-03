@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from fruits.FruitImageDataset import FruitImageDataset
 from tools import logging_tools as log
-from tools.data_tool import get_dataloaders_from_dataset, split_train
+from tools.data_tool import get_dataloaders_from_dataset, split_train_val
 from tools.torch_tool import get_device, set_seed, get_optimizer_lr
 
 batch_size = 16
@@ -68,7 +68,7 @@ def main():
     train_dataset = FruitImageDataset(train_folder, image_size=image_size)
     test_dataset = FruitImageDataset(test_folder, image_size=image_size, train=False)
 
-    train_dataset, val_dataset = split_train(train_dataset, transform=test_dataset.transform)
+    train_dataset, val_dataset = split_train_val(train_dataset, transform=test_dataset.transform)
     train_dataloader, val_dataloader, test_dataloader, classes, train_info = get_dataloaders_from_dataset(train_dataset,
                                                                                                           test_dataset,
                                                                                                           batch_size=batch_size,
@@ -144,7 +144,7 @@ def main():
     images, labels, probs = get_predictions(model, val_dataloader, device)
     pred_labels = torch.argmax(probs, 1)
 
-    log.lof_confusion_matrix(classes, labels, pred_labels, writer)
+    log.log_confusion_matrix(classes, labels, pred_labels, writer)
 
     incorrect_examples = get_incorrect_examples(images, labels, probs, pred_labels)
     log.log_incorrect_examples(classes, incorrect_examples, writer)
