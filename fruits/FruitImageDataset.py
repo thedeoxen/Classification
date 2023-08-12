@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
 class FruitImageDataset(Dataset):
     def __init__(self, folder, image_size, train=True):
-        super().__init__(self)
+        # super().__init__(self)
         self.images, self.fruit, self.fresh = [], [], []
         for file in tqdm(os.listdir(folder)):
             for img in os.listdir(os.path.join(folder, file))[:100]:

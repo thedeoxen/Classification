@@ -37,6 +37,7 @@ def get_mobilenetv3_model(device, freeze_pretrained=True, classes=3):
     model.classifier = nn.Sequential(
         nn.Dropout(p=0.2),
         nn.Linear(model.classifier[0].in_features, classes),
+        nn.Sigmoid()
     )
 
     model.to(device)

@@ -3,10 +3,11 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, multilabel_confusion_matrix
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 images_mean = [0.485, 0.456, 0.406]
 images_std = [0.229, 0.224, 0.225]
+
 
 def plot_images(images, labels, classes):
     n_images = len(images)
@@ -19,8 +20,14 @@ def plot_images(images, labels, classes):
     for i in range(rows * cols):
         ax = fig.add_subplot(rows, cols, i + 1)
         image = images[i]
-        ax.imshow(image.permute(1, 2, 0).cpu().numpy())
-        ax.set_title(classes[labels[i]])
+        image = image.permute(1, 2, 0)
+        image = denormalize_image(image)
+        ax.imshow(image.cpu().numpy())
+        if labels[i].shape[0] > 1:
+            label = torch.argmax(labels[i]).item()
+        else:
+            label = labels[i]
+        ax.set_title(classes[label])
         ax.axis('off')
 
 
@@ -38,7 +45,7 @@ def plot_most_incorrect(incorrect, classes, n_images):
         image = image.permute(1, 2, 0)
         image = denormalize_image(image)
 
-        if true_label.shape[0]>1:
+        if true_label.shape[0] > 1:
             true_label = torch.argmax(true_label).item()
             true_prob = probs[true_label]
         else:
